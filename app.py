@@ -226,7 +226,33 @@ def fetch_ticker_multi(symbol):
     except Exception:
         pass
 
-    raise RuntimeError("모든 거래소(Binance, Bybit, Gate.io) API 호출 실패")
+    # 4. Yahoo Finance (100% Never blocked on Cloud)
+    try:
+        ticker = "QQQ" if "QQQ" in symbol else "NFLX"
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            d = json.loads(resp.read().decode())
+            meta = d["chart"]["result"][0]["meta"]
+            price = float(meta.get("regularMarketPrice", 0))
+            prev_close = float(meta.get("chartPreviousClose", price))
+            pct = ((price - prev_close) / prev_close) * 100 if prev_close else 0
+            high = float(meta.get("regularMarketDayHigh", price))
+            low = float(meta.get("regularMarketDayLow", price))
+            vol = float(meta.get("regularMarketVolume", 0))
+            if price > 0:
+                return {
+                    "source": "Yahoo Finance (NASDAQ)",
+                    "price": price,
+                    "high": high,
+                    "low": low,
+                    "priceChangePct": pct,
+                    "volume": vol
+                }
+    except Exception:
+        pass
+
+    raise RuntimeError("모든 거래소 및 금융 API 호출 실패")
 
 fetch_binance_ticker = fetch_ticker_multi
 
@@ -511,6 +537,24 @@ def api_test_telegram():
         return jsonify({"ok": True, "message": f"{t_conf.get('name', sym)} 테스트 메시지가 성공적으로 발송되었습니다."})
     else:
         return jsonify({"ok": False, "error": err})
+
+@app.route("/api/sync-price", methods=["POST"])
+def api_sync_price():
+    data = request.get_json() or {}
+    sym = data.get("symbol")
+    price = data.get("price")
+    if sym in state["symbols"] and price and float(price) > 0:
+        p = float(price)
+        with state_lock:
+            s_state = state["symbols"][sym]
+            s_state["current_price"] = p
+            if "high" in data: s_state["high_24h"] = float(data["high"])
+            if "low" in data: s_state["low_24h"] = float(data["low"])
+            if "pct" in data: s_state["price_change_pct"] = float(data["pct"])
+            s_state["last_updated"] = datetime.now().strftime("%H:%M:%S")
+            s_state["api_status"] = "정상 연결 (브라우저 직통)"
+        return jsonify({"ok": True})
+    return jsonify({"ok": False})
 
 @app.route("/api/clear-logs", methods=["POST"])
 def api_clear_logs():

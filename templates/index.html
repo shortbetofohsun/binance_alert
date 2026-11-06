@@ -700,6 +700,44 @@
       }
     }
 
+    // Direct browser-side fetch to Binance (bypasses any Cloudflare / Cloud IP blocks)
+    async function fetchClientDirectBinance(symbol, prefix, chartObj) {
+      try {
+        const resp = await fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol}`);
+        if (!resp.ok) return;
+        const bData = await resp.json();
+        const p = parseFloat(bData.lastPrice);
+        if (p > 0) {
+          const clientData = {
+            current_price: p,
+            target_price: parseFloat(document.getElementById(`${prefix}_targetInput`).value || 660),
+            condition: document.getElementById(`${prefix}_condSelect`).value || 'gte',
+            high_24h: parseFloat(bData.highPrice),
+            low_24h: parseFloat(bData.lowPrice),
+            price_change_pct: parseFloat(bData.priceChangePercent),
+            api_status: '정상 연결 (브라우저 바이낸스 직통)'
+          };
+          renderAssetCard(symbol, clientData, prefix, chartObj);
+          document.getElementById('headerStatusText').textContent = '바이낸스 선물 실시간 연결 (브라우저 직통)';
+
+          // Sync to server so server knows price
+          fetch('/api/sync-price', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              symbol: symbol,
+              price: p,
+              high: bData.highPrice,
+              low: bData.lowPrice,
+              pct: bData.priceChangePercent
+            })
+          }).catch(() => {});
+        }
+      } catch (e) {
+        console.warn('Client direct fetch error:', e);
+      }
+    }
+
     async function updateStatus() {
       try {
         const resp = await fetch('/api/status');
@@ -710,6 +748,15 @@
         if (data.symbols) {
           renderAssetCard('QQQUSDT', data.symbols['QQQUSDT'], 'qqq', qqqChart);
           renderAssetCard('NFLXUSDT', data.symbols['NFLXUSDT'], 'nflx', nflxChart);
+
+          // Client-side Direct Binance Fallback (if server price is 0 due to cloud IP blocks)
+          for (const sym of ['QQQUSDT', 'NFLXUSDT']) {
+            const prefix = sym === 'QQQUSDT' ? 'qqq' : 'nflx';
+            const sInfo = data.symbols[sym];
+            if (!sInfo || sInfo.current_price <= 0) {
+              fetchClientDirectBinance(sym, prefix, sym === 'QQQUSDT' ? qqqChart : nflxChart);
+            }
+          }
         }
 
         // Header time
