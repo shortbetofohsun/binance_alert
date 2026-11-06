@@ -622,23 +622,35 @@
       const currP = sData.current_price;
       const targetP = sData.target_price;
       const cond = sData.condition;
-
-      // Price update & flash
       const pEl = document.getElementById(`${prefix}_priceDisplay`);
-      if (currP > 0) {
-        pEl.textContent = `$${currP.toFixed(2)}`;
-        const lastP = lastPrices[symbol];
-        if (lastP !== null) {
-          if (currP > lastP) {
-            pEl.classList.add('text-binanceGreen', 'price-glow-green');
-            setTimeout(() => pEl.classList.remove('text-binanceGreen', 'price-glow-green'), 500);
-          } else if (currP < lastP) {
-            pEl.classList.add('text-binanceRed', 'price-glow-red');
-            setTimeout(() => pEl.classList.remove('text-binanceRed', 'price-glow-red'), 500);
-          }
-        }
-        lastPrices[symbol] = currP;
+      const distEl = document.getElementById(`${prefix}_distDisplay`);
+
+      // If price is 0 or not loaded yet (e.g. cloud IP blocked or loading)
+      if (currP <= 0) {
+        pEl.textContent = '$---.--';
+        pEl.className = 'text-4xl lg:text-5xl font-black mono tracking-tight text-gray-500';
+        document.getElementById(`${prefix}_lowLabel`).textContent = '24h 저가: $--';
+        document.getElementById(`${prefix}_highLabel`).textContent = '24h 고가: $--';
+        document.getElementById(`${prefix}_priceChangeBadge`).textContent = sData.api_status ? sData.api_status : '연결 중...';
+        document.getElementById(`${prefix}_priceChangeBadge`).className = 'text-xs font-semibold mono text-amber-400';
+        distEl.innerHTML = `<span class="text-amber-400 font-semibold"><i class="fa-solid fa-circle-exclamation mr-1"></i>${sData.api_status || '시세 수신 대기 중'}</span>`;
+        return;
       }
+
+      // Normal Price update & flash
+      pEl.className = 'text-4xl lg:text-5xl font-black mono tracking-tight text-white transition-colors duration-300';
+      pEl.textContent = `$${currP.toFixed(2)}`;
+      const lastP = lastPrices[symbol];
+      if (lastP !== null) {
+        if (currP > lastP) {
+          pEl.classList.add('text-binanceGreen', 'price-glow-green');
+          setTimeout(() => pEl.classList.remove('text-binanceGreen', 'price-glow-green'), 500);
+        } else if (currP < lastP) {
+          pEl.classList.add('text-binanceRed', 'price-glow-red');
+          setTimeout(() => pEl.classList.remove('text-binanceRed', 'price-glow-red'), 500);
+        }
+      }
+      lastPrices[symbol] = currP;
 
       // 24h stats
       const chgBadge = document.getElementById(`${prefix}_priceChangeBadge`);

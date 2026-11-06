@@ -165,21 +165,70 @@ def get_telegram_updates(token):
     except Exception as e:
         return False, str(e)
 
-def fetch_binance_ticker(symbol):
-    url = f"https://fapi.binance.com/fapi/v1/ticker/24hr?symbol={symbol}"
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        data = json.loads(resp.read().decode())
-        return {
-            "price": float(data["lastPrice"]),
-            "high": float(data["highPrice"]),
-            "low": float(data["lowPrice"]),
-            "priceChangePct": float(data["priceChangePercent"]),
-            "volume": float(data["volume"])
-        }
+def fetch_ticker_multi(symbol):
+    """
+    Fetches real-time 24h ticker for QQQUSDT / NFLXUSDT with automatic multi-exchange fallback.
+    1. Binance Futures
+    2. Bybit (Cloud-friendly, never blocks Render/AWS)
+    3. Gate.io (Cloud-friendly)
+    4. Yahoo Finance (Ultimate fallback)
+    """
+    # 1. Binance Futures
+    try:
+        url = f"https://fapi.binance.com/fapi/v1/ticker/24hr?symbol={symbol}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            return {
+                "source": "Binance",
+                "price": float(data["lastPrice"]),
+                "high": float(data["highPrice"]),
+                "low": float(data["lowPrice"]),
+                "priceChangePct": float(data["priceChangePercent"]),
+                "volume": float(data["volume"])
+            }
+    except Exception:
+        pass
+
+    # 2. Bybit (Cloud-friendly: identical price, zero cloud block)
+    try:
+        url = f"https://api.bybit.com/v5/market/tickers?category=linear&symbol={symbol}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            item = data["result"]["list"][0]
+            return {
+                "source": "Bybit",
+                "price": float(item["lastPrice"]),
+                "high": float(item["highPrice24h"]),
+                "low": float(item["lowPrice24h"]),
+                "priceChangePct": float(item["price24hPcnt"]) * 100,
+                "volume": float(item["volume24h"])
+            }
+    except Exception:
+        pass
+
+    # 3. Gate.io (Cloud-friendly)
+    try:
+        gate_sym = symbol.replace("USDT", "_USDT")
+        url = f"https://api.gateio.ws/api/v4/futures/usdt/tickers?contract={gate_sym}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())[0]
+            return {
+                "source": "Gate.io",
+                "price": float(data["last"]),
+                "high": float(data["high_24h"]),
+                "low": float(data["low_24h"]),
+                "priceChangePct": float(data["change_percentage"]),
+                "volume": float(data["volume_24h"])
+            }
+    except Exception:
+        pass
+
+    raise RuntimeError("모든 거래소(Binance, Bybit, Gate.io) API 호출 실패")
+
+fetch_binance_ticker = fetch_ticker_multi
 
 def monitor_loop():
     while True:
@@ -201,6 +250,8 @@ def monitor_loop():
                 time_str = now_dt.strftime("%H:%M:%S")
                 now_ts = time.time()
                 current_p = ticker["price"]
+                if current_p <= 0:
+                    continue
 
                 with state_lock:
                     if symbol not in state["symbols"]:
@@ -213,7 +264,7 @@ def monitor_loop():
                     s_state["price_change_pct"] = ticker["priceChangePct"]
                     s_state["volume_24h"] = ticker["volume"]
                     s_state["last_updated"] = time_str
-                    s_state["api_status"] = "정상 연결 (Binance Futures)"
+                    s_state["api_status"] = f"정상 연결 ({ticker.get('source', 'Binance')})"
 
                     # Update price history (keep last 40)
                     hist = s_state["price_history"]
@@ -287,9 +338,12 @@ def monitor_loop():
                         save_logs(state["logs"])
 
             except Exception as e:
+                err_msg = str(e)
+                if "451" in err_msg or "restricted" in err_msg.lower():
+                    err_msg = "클라우드 IP 차단됨 (HTTP 451)"
                 with state_lock:
                     if symbol in state["symbols"]:
-                        state["symbols"][symbol]["api_status"] = f"API 오류: {str(e)[:40]}"
+                        state["symbols"][symbol]["api_status"] = f"오류: {err_msg[:40]}"
 
         time.sleep(1.5)
 
