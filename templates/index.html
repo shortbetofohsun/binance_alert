@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>바이낸스 실시간 알리미 | QQQ $660 & 넷플릭스 $55</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            binanceYellow: '#F0B90B',
+            binanceDark: '#0B0E11',
+            binanceCard: '#181A20',
+            binanceBorder: '#2B313A',
+            binanceGreen: '#0ECB81',
+            binanceRed: '#F6465D',
+            netflixRed: '#E50914'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0B0E11;
+      color: #EAECEF;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .price-glow-green {
+      text-shadow: 0 0 20px rgba(14, 203, 129, 0.4);
+    }
+    .price-glow-red {
+      text-shadow: 0 0 20px rgba(246, 70, 93, 0.4);
+    }
+    .pulse-dot {
+      animation: pulse-animation 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse-animation {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.9); }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-binanceYellow selection:text-black">
+
+  <!-- Top Navigation Bar -->
+  <header class="border-b border-binanceBorder bg-binanceCard/80 backdrop-blur sticky top-0 z-50 px-4 lg:px-8 py-3.5">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-binanceYellow/15 border border-binanceYellow/30 flex items-center justify-center text-binanceYellow text-xl font-bold shadow-lg shadow-binanceYellow/5">
+          <i class="fa-brands fa-telegram"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold text-lg tracking-tight text-white">바이낸스 시세 알리미</span>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-binanceYellow/20 text-binanceYellow font-semibold border border-binanceYellow/40">QQQ & 넷플릭스</span>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-gray-400">
+            <span class="inline-block w-2 h-2 rounded-full bg-binanceGreen pulse-dot"></span>
+            <span id="headerStatusText">바이낸스 선물 실시간 연동 중</span>
+            <span class="text-gray-600">|</span>
+            <span id="lastUpdatedTime" class="mono text-gray-400">--:--:--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Controls -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <button onclick="resetAlertState()" title="알림 상태 초기화 (다시 감시)" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-binanceBorder/60 hover:bg-binanceBorder text-gray-300 hover:text-white transition text-xs font-semibold">
+          <i class="fa-solid fa-arrows-rotate text-[11px]"></i>
+          <span class="hidden sm:inline">상태 초기화</span>
+        </button>
+        <button onclick="playBeep()" title="사운드 테스트" class="p-2 rounded-lg bg-binanceBorder/50 hover:bg-binanceBorder text-gray-300 transition text-sm">
+          <i class="fa-solid fa-volume-high"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
+
+    <!-- Telegram Setup Warning Banner (auto-hidden once connected) -->
+    <div id="telegramAlertBanner" class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div>
+          <h3 class="text-sm font-bold text-amber-300">텔레그램 봇 연동 안내</h3>
+          <p class="text-xs text-gray-300 mt-0.5">
+            텔레그램 봇(<span class="text-white font-mono font-semibold">@<span id="botNameSpan">Alert_123455_bot</span></span>)에 <span class="text-amber-300 font-bold">/start</span>를 보내주셔야 목표가 도달 시 알림을 전송할 수 있습니다!
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 w-full md:w-auto">
+        <a id="telegramDirectLink" href="https://t.me/Alert_123455_bot" target="_blank" class="flex-1 md:flex-none text-center px-4 py-2 rounded-lg bg-[#2AABEE] hover:bg-[#229ED9] text-white text-xs font-semibold shadow transition">
+          <i class="fa-brands fa-telegram mr-1.5"></i>봇 열고 /start 전송
+        </a>
+        <button onclick="detectTelegramChatId()" class="flex-1 md:flex-none px-4 py-2 rounded-lg bg-binanceYellow text-black text-xs font-bold hover:bg-yellow-400 shadow transition flex items-center justify-center gap-1.5">
+          <i class="fa-solid fa-sync" id="detectSyncIcon"></i>
+          <span>채팅 ID 자동 가져오기</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Twin Asset Hero Grid (QQQ and Netflix) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- ================= CARD 1: QQQUSDT ================= -->
+      <div class="bg-binanceCard border border-binanceBorder rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+        <div class="absolute -top-16 -right-16 w-52 h-52 bg-binanceYellow/5 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div>
+          <!-- Card Header -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-sm">
+                <i class="fa-solid fa-chart-pie"></i>
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h2 class="text-xl font-bold tracking-tight text-white">QQQ / USDT</h2>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-medium border border-blue-500/20">나스닥 100</span>
+                </div>
+                <span class="text-xs text-gray-400">바이낸스 무기한 선물</span>
+              </div>
+            </div>
+            
+            <div class="text-right">
+              <span class="text-[11px] text-gray-400">24h 변동률</span>
+              <div id="qqq_priceChangeBadge" class="text-sm font-bold mono text-binanceGreen">+0.00%</div>
+            </div>
+          </div>
+
+          <!-- Price Display -->
+          <div class="flex items-baseline gap-3 my-2">
+            <div id="qqq_priceDisplay" class="text-4xl lg:text-5xl font-black mono tracking-tight text-white transition-colors duration-300">
+              $---.--
+            </div>
+            <div class="text-sm text-gray-400 font-medium">USDT</div>
+          </div>
+
+          <!-- Target Strip -->
+          <div class="p-3 rounded-xl bg-binanceDark/70 border border-binanceBorder flex items-center justify-between gap-2 text-xs my-3">
+            <div class="flex items-center gap-1.5">
+              <span class="text-gray-400">목표가:</span>
+              <span id="qqq_targetDisplay" class="font-bold text-binanceYellow mono text-sm">$660.00</span>
+              <span id="qqq_condBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-binanceYellow/10 text-binanceYellow border border-binanceYellow/20">이상 (>=)</span>
+            </div>
+            <div id="qqq_distDisplay" class="font-bold mono text-right text-amber-400">
+              $--.-- (--%)
+            </div>
+          </div>
+
+          <!-- Progress to Target -->
+          <div class="space-y-1 mb-4">
+            <div class="flex justify-between text-[11px] text-gray-400 mono">
+              <span id="qqq_lowLabel">24h 저가: $--</span>
+              <span class="text-binanceYellow font-semibold">목표: $660.00</span>
+              <span id="qqq_highLabel">24h 고가: $--</span>
+            </div>
+            <div class="w-full bg-binanceDark h-2 rounded-full overflow-hidden border border-binanceBorder/60">
+              <div id="qqq_progressBar" class="h-full bg-gradient-to-r from-binanceYellow to-binanceGreen transition-all duration-500 rounded-full" style="width: 50%;"></div>
+            </div>
+          </div>
+
+          <!-- Sparkline Chart -->
+          <div class="h-28 w-full mb-4">
+            <canvas id="qqq_chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Inline Settings for QQQ -->
+        <div class="pt-4 border-t border-binanceBorder/80 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-sliders text-binanceYellow text-[11px]"></i>
+              QQQ 목표가 설정
+            </span>
+            <label class="flex items-center gap-1.5 cursor-pointer text-xs">
+              <input type="checkbox" id="qqq_enabledCheck" checked onchange="saveSymbolConfig('QQQUSDT')" class="rounded border-binanceBorder text-binanceYellow focus:ring-0">
+              <span class="text-gray-400">감시 활성</span>
+            </label>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <div class="relative flex-1">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+              <input type="number" step="0.1" id="qqq_targetInput" value="660" class="w-full pl-6 pr-3 py-1.5 bg-binanceDark border border-binanceBorder rounded-lg text-white font-mono font-bold text-sm focus:outline-none focus:border-binanceYellow">
+            </div>
+            <select id="qqq_condSelect" class="bg-binanceDark border border-binanceBorder rounded-lg px-2.5 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-binanceYellow">
+              <option value="gte">이상 (>=) 돌파</option>
+              <option value="lte">이하 (<=) 하락</option>
+            </select>
+            <button onclick="saveSymbolConfig('QQQUSDT')" class="px-3.5 py-1.5 rounded-lg bg-binanceYellow text-black font-bold text-xs hover:bg-yellow-400 transition">
+              저장
+            </button>
+          </div>
+
+          <!-- Presets -->
+          <div class="flex gap-1.5">
+            <button onclick="setPreset('QQQUSDT', 650)" class="flex-1 py-1 bg-binanceDark hover:bg-binanceBorder border border-binanceBorder rounded text-[11px] font-mono text-gray-300">650</button>
+            <button onclick="setPreset('QQQUSDT', 655)" class="flex-1 py-1 bg-binanceDark hover:bg-binanceBorder border border-binanceBorder rounded text-[11px] font-mono text-gray-300">655</button>
+            <button onclick="setPreset('QQQUSDT', 660)" class="flex-1 py-1 bg-binanceYellow/20 hover:bg-binanceYellow/30 border border-binanceYellow/40 rounded text-[11px] font-mono text-binanceYellow font-bold">660</button>
+            <button onclick="setPreset('QQQUSDT', 665)" class="flex-1 py-1 bg-binanceDark hover:bg-binanceBorder border border-binanceBorder rounded text-[11px] font-mono text-gray-300">665</button>
+            <button onclick="setPreset('QQQUSDT', 670)" class="flex-1 py-1 bg-binanceDark hover:bg-binanceBorder border border-binanceBorder rounded text-[11px] font-mono text-gray-300">670</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================= CARD 2: NFLXUSDT ================= -->
+      <div class="bg-binanceCard border border-binanceBorder rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+        <div class="absolute -top-16 -right-16 w-52 h-52 bg-red-600/5 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div>
+          <!-- Card Header -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-red-600/20 text-red-500 flex items-center justify-center font-bold text-sm">
+                <i class="fa-solid fa-film"></i>
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h2 class="text-xl font-bold tracking-tight text-white">NFLX / USDT</h2>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-red-600/20 text-red-400 font-semibold border border-red-600/30">넷플릭스 주식선물</span>
+                </div>
+                <span class="text-xs text-gray-400">바이낸스 무기한 선물</span>
+              </div>
+            </div>
+            
+            <div class="text-right">
+              <span class="text-[11px] text-gray-400">24h 변동률</span>
+              <div id="nflx_priceChangeBadge" class="text-sm font-bold mono text-binanceGreen">+0.00%</div>
+            </div>
+          </div>
+
+          <!-- Price Display -->
+          <div class="flex items-baseline gap-3 my-2">
+            <div id="nflx_priceDisplay" class="text-4xl lg:text-5xl font-black mono tracking-tight text-white transition-colors duration-300">
+              $---.--
+            </div>
+            <div class="text-sm text-gray-400 font-medium">USDT</div>
+          </div>
+
+          <!-- Target Strip -->
+          <div class="p-3 rounded-xl bg-binanceDark/70 border border-binanceBorder flex items-center justify-between gap-2 text-xs my-3">
+            <div class="flex items-center gap-1.5">
+              <span class="text-gray-400">목표가:</span>
+              <span id="nflx_targetDisplay" class="font-bold text-red-400 mono text-sm">$55.00</span>
+              <span id="nflx_condBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">이하 (<=)</span>
+            </div>
+            <div id="nflx_distDisplay" class="font-bold mono text-right text-amber-400">
+              $--.-- (--%)
+            </div>
+          </div>
+
+          <!-- Progress to Target -->
+          <div class="space-y-1 mb-4">
+            <div class="flex justify-between text-[11px] text-gray-400 mono">
+              <span id="nflx_lowLabel">24h 저가: $--</span>
+              <span class="text-red-400 font-semibold">목표: $55.00</span>
+              <span id="nflx_highLabel">24h 고가: $--</span>
+            </div>
+            <div class="w-full bg-binanceDark h-2 rounded-full overflow-hidden border border-binanceBorder/60">
+              <div id="nflx_progressBar" class="h-full bg-gradient-to-r from-red-600 to-amber-500 transition-all duration-500 rounded-full" style="width: 50%;"></div>
+            </div>
+          </div>
+
+          <!-- Sparkline Chart -->
+          <div class="h-28 w-full mb-4">
+            <canvas id="nflx_chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Inline Settings for NFLX -->
+        <div class="pt-4 border-t border-binanceBorder/80 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-sliders text-red-400 text-[11px]"></i>
+              넷플릭스 목표가 설정
+            </span>
+            <label class="flex items-center gap-1.5 cursor-pointer text-xs">
+              <input type="checkbox" id="nflx_enabledCheck" checked onchange="saveSymbolConfig('NFLXUSDT')" class="rounded border-binanceBorder text-red-500 focus:ring-0">
+              <span class="text-gray-400">감시 활성</span>
+            </label>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <div class="relative flex-1">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+              <input type="number" step="0.1" id="nflx_targetInput" value="55" class="w-full pl-6 pr-3 py-1.5 bg-binanceDark border border-binanceBorder rounded-lg text-white font-mono font-bold text-sm focus:outline-none focus:border-red-500">
+            </div>
+            <select id="nflx_condSelect" class="bg-binanceDark border border-binanceBorder rounded-lg px-2.5 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-red-500">
+              <option value="lte" selected>이하 (<=) 하락/도달</option>
+              <option value="gte">이상 (>=) 돌파</option>
+            </select>
+            <button onclick="saveSymbolConfig('NFLXUSDT')" class="px-3.5 py-1.5 rounded-lg bg-red-600 text-white font-bold text-xs hover:bg-red-700 transition">
+              저장
+            </button>
+          </div>
+
+          <!-- Presets -->
+          <div class="flex gap-1.5">
+            <button onclick="setPreset('NFLXUSDT', 50)" class="flex-1 py-1 bg-binanceDark hover:bg-binanceBorder border border-binanceBorder rounded text-[11px] font-mono text-gray-300">50</button>
+            <button onclick="setPreset('NFLXUSDT', 55)" class="flex-1 py-1 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 rounded text-[11px] font-mono text-red-400 font-bold">55</button>
+            <button onclick="setPreset('NFLXUSDT', 60)" class="flex-1 py-1 bg-binanceDark hover:bg-binanceBorder border border-binanceBorder rounded text-[11px] font-mono text-gray-300">60</button>
+            <button onclick="setPreset('NFLXUSDT', 65)" class="flex-1 py-1 bg-binanceDark hover:bg-binanceBorder border border-binanceBorder rounded text-[11px] font-mono text-gray-300">65</button>
+            <button onclick="setPreset('NFLXUSDT', 70)" class="flex-1 py-1 bg-binanceDark hover:bg-binanceBorder border border-binanceBorder rounded text-[11px] font-mono text-gray-300">70</button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Bottom Row: Telegram Config & Trigger Logs -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Telegram Status & Test Alert Card -->
+      <div class="bg-binanceCard border border-binanceBorder rounded-2xl p-6 shadow-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-binanceBorder pb-3">
+          <h3 class="font-bold text-white flex items-center gap-2">
+            <i class="fa-brands fa-telegram text-[#2AABEE]"></i>
+            텔레그램 연동 관리
+          </h3>
+          <span id="telegramStatusBadge" class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+            미연동
+          </span>
+        </div>
+
+        <div class="p-3 bg-binanceDark rounded-xl border border-binanceBorder space-y-1">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-400">연동된 사용자:</span>
+            <span id="chatUserDisplay" class="font-semibold text-white">미설정</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-400">Chat ID:</span>
+            <span id="chatIdDisplay" class="font-mono text-binanceYellow font-semibold">없음</span>
+          </div>
+        </div>
+
+        <!-- Manual Chat ID Input -->
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Chat ID 수동 지정</label>
+          <div class="flex gap-2">
+            <input type="text" id="manualChatIdInput" placeholder="예: 123456789" class="flex-1 px-3 py-2 bg-binanceDark border border-binanceBorder rounded-xl text-xs font-mono text-white focus:outline-none focus:border-[#2AABEE]">
+            <button onclick="saveManualChatId()" class="px-3 py-2 rounded-xl bg-binanceBorder hover:bg-gray-700 text-xs font-semibold text-white transition">저장</button>
+          </div>
+        </div>
+
+        <!-- Individual Test Alerts -->
+        <div class="pt-2 space-y-2">
+          <label class="block text-xs font-semibold text-gray-400">즉시 테스트 발송</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="sendTestAlert('QQQUSDT')" class="py-2 px-3 rounded-xl bg-blue-500/15 border border-blue-500/30 hover:bg-blue-500/25 text-blue-400 font-bold text-xs transition flex items-center justify-center gap-1.5">
+              <i class="fa-solid fa-paper-plane text-[10px]"></i>
+              <span>QQQ 테스트</span>
+            </button>
+            <button onclick="sendTestAlert('NFLXUSDT')" class="py-2 px-3 rounded-xl bg-red-500/15 border border-red-500/30 hover:bg-red-500/25 text-red-400 font-bold text-xs transition flex items-center justify-center gap-1.5">
+              <i class="fa-solid fa-paper-plane text-[10px]"></i>
+              <span>NFLX 테스트</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trigger History Logs Card (2 cols) -->
+      <div class="lg:col-span-2 bg-binanceCard border border-binanceBorder rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-4 pb-3 border-b border-binanceBorder">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-clock-rotate-left text-gray-400"></i>
+              <h3 class="font-bold text-white text-base">알림 발송 기록</h3>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-binanceBorder text-gray-300 mono" id="alertCountBadge">0회</span>
+            </div>
+            <button onclick="clearLogs()" class="text-xs text-gray-400 hover:text-red-400 transition flex items-center gap-1">
+              <i class="fa-solid fa-trash-can"></i>
+              <span>기록 비우기</span>
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-gray-400 border-b border-binanceBorder/80">
+                  <th class="py-2 px-3">발송 일시</th>
+                  <th class="py-2 px-3">종목</th>
+                  <th class="py-2 px-3">트리거 가격</th>
+                  <th class="py-2 px-3">설정 목표가</th>
+                  <th class="py-2 px-3">상태</th>
+                  <th class="py-2 px-3">상세</th>
+                </tr>
+              </thead>
+              <tbody id="logsTableBody" class="divide-y divide-binanceBorder/40">
+                <tr>
+                  <td colspan="6" class="py-8 text-center text-gray-500">
+                    아직 발송된 알림 내역이 없습니다. 목표가(QQQ $660, NFLX $55) 도달 시 실시간 기록됩니다.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Notification Toast Container -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Client-side Scripts -->
+  <script>
+    let audioCtx = null;
+    function playBeep() {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+        showToast('🔊 알림음 사운드가 재생되었습니다.', 'info');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl text-xs font-semibold shadow-2xl transition-all duration-300 transform translate-y-2 opacity-0 flex items-center gap-2 max-w-sm ${
+        type === 'success' ? 'bg-binanceGreen text-black font-bold' :
+        type === 'error' ? 'bg-binanceRed text-white' :
+        type === 'warning' ? 'bg-binanceYellow text-black font-bold' :
+        'bg-binanceCard border border-binanceBorder text-white'
+      }`;
+      toast.innerHTML = `<i class="fa-solid ${type === 'success' ? 'fa-circle-check' : type === 'error' ? 'fa-circle-xmark' : 'fa-bell'}"></i><span>${message}</span>`;
+      container.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.remove('translate-y-2', 'opacity-0'));
+      setTimeout(() => {
+        toast.classList.add('translate-y-2', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // Chart.js helper
+    function createSparkline(canvasId, color) {
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, 0, 110);
+      gradient.addColorStop(0, color.replace('1)', '0.35)'));
+      gradient.addColorStop(1, color.replace('1)', '0.0)'));
+
+      return new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            data: [],
+            borderColor: color,
+            borderWidth: 2,
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: {
+              position: 'right',
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#848E9C', font: { size: 9, family: 'JetBrains Mono' }, callback: v => '$' + v.toFixed(1) }
+            }
+          }
+        }
+      });
+    }
+
+    let qqqChart = null;
+    let nflxChart = null;
+    let lastPrices = { QQQUSDT: null, NFLXUSDT: null };
+
+    function setPreset(symbol, val) {
+      const prefix = symbol === 'QQQUSDT' ? 'qqq' : 'nflx';
+      document.getElementById(`${prefix}_targetInput`).value = val;
+      saveSymbolConfig(symbol);
+    }
+
+    async function saveSymbolConfig(symbol) {
+      const prefix = symbol === 'QQQUSDT' ? 'qqq' : 'nflx';
+      const targetP = parseFloat(document.getElementById(`${prefix}_targetInput`).value);
+      const cond = document.getElementById(`${prefix}_condSelect`).value;
+      const enabled = document.getElementById(`${prefix}_enabledCheck`).checked;
+
+      if (isNaN(targetP) || targetP <= 0) {
+        showToast('유효한 목표 가격을 입력해주세요.', 'error');
+        return;
+      }
+
+      try {
+        const resp = await fetch('/api/update-symbol-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol: symbol,
+            target_price: targetP,
+            condition: cond,
+            enabled: enabled
+          })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          showToast(`${symbol === 'QQQUSDT' ? '나스닥 QQQ' : '넷플릭스'} 목표가가 $${targetP.toFixed(2)} (${cond === 'gte' ? '이상' : '이하'})로 설정되었습니다!`, 'success');
+        }
+      } catch (e) {
+        showToast('설정 저장 중 오류가 발생했습니다.', 'error');
+      }
+    }
+
+    async function saveManualChatId() {
+      const cid = document.getElementById('manualChatIdInput').value.trim();
+      if (!cid) return showToast('Chat ID를 입력해주세요.', 'error');
+      try {
+        const resp = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: cid, chat_user: '수동 지정 (' + cid + ')' })
+        });
+        const res = await resp.json();
+        if (res.ok) showToast(`Chat ID (${cid}) 저장 완료!`, 'success');
+      } catch (e) {
+        showToast('저장 실패', 'error');
+      }
+    }
+
+    async function detectTelegramChatId() {
+      const icon = document.getElementById('detectSyncIcon');
+      icon.classList.add('fa-spin');
+      try {
+        const resp = await fetch('/api/telegram-detect');
+        const data = await resp.json();
+        if (data.ok) {
+          showToast(`🎉 연동 성공: ${data.chat_user} (ID: ${data.chat_id})`, 'success');
+          playBeep();
+        } else {
+          showToast(data.error || '봇으로부터 메시지를 찾지 못했습니다.', 'warning');
+        }
+      } catch (e) {
+        showToast('연동 확인 오류', 'error');
+      } finally {
+        icon.classList.remove('fa-spin');
+      }
+    }
+
+    async function sendTestAlert(symbol) {
+      try {
+        showToast(`${symbol} 테스트 알림 발송 중...`, 'info');
+        const resp = await fetch('/api/test-telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: symbol })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          showToast(res.message, 'success');
+        } else {
+          showToast(res.error || '발송 실패', 'error');
+        }
+      } catch (e) {
+        showToast('테스트 전송 실패: ' + e.message, 'error');
+      }
+    }
+
+    async function resetAlertState() {
+      try {
+        const resp = await fetch('/api/reset-alert-state', { method: 'POST' });
+        const res = await resp.json();
+        if (res.ok) showToast(res.message, 'success');
+      } catch (e) {
+        showToast('초기화 실패', 'error');
+      }
+    }
+
+    async function clearLogs() {
+      if (!confirm('발송 기록을 모두 삭제하시겠습니까?')) return;
+      await fetch('/api/clear-logs', { method: 'POST' });
+      showToast('발송 기록이 삭제되었습니다.', 'info');
+      updateStatus();
+    }
+
+    function renderAssetCard(symbol, sData, prefix, chartObj) {
+      if (!sData) return;
+      const currP = sData.current_price;
+      const targetP = sData.target_price;
+      const cond = sData.condition;
+
+      // Price update & flash
+      const pEl = document.getElementById(`${prefix}_priceDisplay`);
+      if (currP > 0) {
+        pEl.textContent = `$${currP.toFixed(2)}`;
+        const lastP = lastPrices[symbol];
+        if (lastP !== null) {
+          if (currP > lastP) {
+            pEl.classList.add('text-binanceGreen', 'price-glow-green');
+            setTimeout(() => pEl.classList.remove('text-binanceGreen', 'price-glow-green'), 500);
+          } else if (currP < lastP) {
+            pEl.classList.add('text-binanceRed', 'price-glow-red');
+            setTimeout(() => pEl.classList.remove('text-binanceRed', 'price-glow-red'), 500);
+          }
+        }
+        lastPrices[symbol] = currP;
+      }
+
+      // 24h stats
+      const chgBadge = document.getElementById(`${prefix}_priceChangeBadge`);
+      const chgPct = sData.price_change_pct;
+      chgBadge.textContent = (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%';
+      chgBadge.className = `text-sm font-bold mono ${chgPct >= 0 ? 'text-binanceGreen' : 'text-binanceRed'}`;
+
+      document.getElementById(`${prefix}_lowLabel`).textContent = `24h 저가: $${sData.low_24h.toFixed(2)}`;
+      document.getElementById(`${prefix}_highLabel`).textContent = `24h 고가: $${sData.high_24h.toFixed(2)}`;
+
+      // Target display
+      document.getElementById(`${prefix}_targetDisplay`).textContent = `$${targetP.toFixed(2)}`;
+      document.getElementById(`${prefix}_condBadge`).textContent = cond === 'gte' ? '이상 (>=)' : '이하 (<=)';
+
+      // Distance
+      const distEl = document.getElementById(`${prefix}_distDisplay`);
+      const diff = currP - targetP;
+      const diffPct = targetP ? (diff / targetP * 100) : 0;
+      if (cond === 'gte') {
+        if (currP >= targetP) {
+          distEl.innerHTML = `<span class="text-binanceGreen font-bold">목표 도달! (+$${diff.toFixed(2)})</span>`;
+        } else {
+          distEl.innerHTML = `<span class="text-amber-400">+$${(-diff).toFixed(2)} (${(-diffPct).toFixed(2)}% 남음)</span>`;
+        }
+      } else {
+        if (currP <= targetP) {
+          distEl.innerHTML = `<span class="text-binanceGreen font-bold">목표 도달! (-$${(-diff).toFixed(2)})</span>`;
+        } else {
+          distEl.innerHTML = `<span class="text-amber-400">-$${diff.toFixed(2)} (${diffPct.toFixed(2)}% 하락 필요)</span>`;
+        }
+      }
+
+      // Progress bar
+      const minP = Math.min(sData.low_24h, targetP * 0.95);
+      const maxP = Math.max(sData.high_24h, targetP * 1.05);
+      let progress = 50;
+      if (maxP > minP) {
+        progress = Math.min(100, Math.max(0, ((currP - minP) / (maxP - minP)) * 100));
+      }
+      document.getElementById(`${prefix}_progressBar`).style.width = `${progress}%`;
+
+      // Update Chart
+      if (chartObj && sData.price_history && sData.price_history.length > 0) {
+        chartObj.data.labels = sData.price_history.map(item => item.time);
+        chartObj.data.datasets[0].data = sData.price_history.map(item => item.price);
+        chartObj.update();
+      }
+    }
+
+    async function updateStatus() {
+      try {
+        const resp = await fetch('/api/status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        // Render QQQ & NFLX
+        if (data.symbols) {
+          renderAssetCard('QQQUSDT', data.symbols['QQQUSDT'], 'qqq', qqqChart);
+          renderAssetCard('NFLXUSDT', data.symbols['NFLXUSDT'], 'nflx', nflxChart);
+        }
+
+        // Header time
+        const qqqData = data.symbols && data.symbols['QQQUSDT'];
+        if (qqqData && qqqData.last_updated) {
+          document.getElementById('lastUpdatedTime').textContent = qqqData.last_updated;
+        }
+
+        // Telegram banner & status
+        const banner = document.getElementById('telegramAlertBanner');
+        const badge = document.getElementById('telegramStatusBadge');
+        if (data.chat_id) {
+          banner.classList.add('hidden');
+          badge.textContent = '연동 완료';
+          badge.className = 'text-xs px-2 py-0.5 rounded-full bg-binanceGreen/20 text-binanceGreen border border-binanceGreen/30';
+          document.getElementById('chatUserDisplay').textContent = data.chat_user || '설정됨';
+          document.getElementById('chatIdDisplay').textContent = data.chat_id;
+        } else {
+          banner.classList.remove('hidden');
+          badge.textContent = '미연동';
+          badge.className = 'text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30';
+          document.getElementById('chatUserDisplay').textContent = '미설정';
+          document.getElementById('chatIdDisplay').textContent = '없음';
+        }
+
+        if (data.bot_username) {
+          document.getElementById('botNameSpan').textContent = data.bot_username;
+          document.getElementById('telegramDirectLink').href = `https://t.me/${data.bot_username}`;
+        }
+
+        // Logs
+        document.getElementById('alertCountBadge').textContent = `${data.total_alert_count || 0}회`;
+        const tbody = document.getElementById('logsTableBody');
+        if (data.logs && data.logs.length > 0) {
+          tbody.innerHTML = data.logs.map(log => {
+            const isQQQ = log.symbol === 'QQQUSDT';
+            return `
+              <tr class="hover:bg-binanceDark/40 transition">
+                <td class="py-2.5 px-3 mono text-gray-300">${log.timestamp}</td>
+                <td class="py-2.5 px-3">
+                  <span class="px-2 py-0.5 rounded text-[11px] font-bold ${isQQQ ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'}">
+                    ${log.name || log.symbol}
+                  </span>
+                </td>
+                <td class="py-2.5 px-3 mono font-bold text-white">$${log.price.toFixed(2)}</td>
+                <td class="py-2.5 px-3 mono text-binanceYellow">$${log.target.toFixed(2)}</td>
+                <td class="py-2.5 px-3">
+                  <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${log.success ? 'bg-binanceGreen/20 text-binanceGreen' : 'bg-binanceRed/20 text-binanceRed'}">
+                    ${log.success ? '전송 완료' : '전송 실패'}
+                  </span>
+                </td>
+                <td class="py-2.5 px-3 text-gray-400">${log.detail}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      qqqChart = createSparkline('qqq_chart', 'rgba(240, 185, 11, 1)');
+      nflxChart = createSparkline('nflx_chart', 'rgba(229, 9, 20, 1)');
+      updateStatus();
+      setInterval(updateStatus, 1500);
+    });
+  </script>
+</body>
+</html>
